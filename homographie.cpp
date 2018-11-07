@@ -16,7 +16,7 @@ int main()
 	Image<uchar> I2 = Image<uchar>(imread("../image2.jpg", CV_LOAD_IMAGE_GRAYSCALE));
 	cout << I1.rows << I1.cols << endl;
 	cout << I2.rows << I2.cols << endl;
-	
+
 	namedWindow("I1", 1);
 	namedWindow("I2", 1);
 	imshow("I1", I1);
@@ -32,7 +32,7 @@ int main()
     D->detectAndCompute(I1, noArray(), m1, desc1);
     D->detectAndCompute(I2, noArray(), m2, desc2);
 	// ...
-	
+
 	Mat J1;
 	drawKeypoints(I1, m1, J1);
 	imshow("I1", J1);
@@ -121,6 +121,7 @@ int main()
     warpPerspective(I2, R2, H2, R2.size());
     imshow("R1", R1);
     imshow("R2", R2);
+
 //    imwrite("../rectified1.png", R1);
 //    imwrite("../rectified2.png", R2);
 //
@@ -131,6 +132,21 @@ int main()
 //	warpPerspective(I2, K, H, Size(2*I1.cols, I1.rows), CV_INTER_LINEAR+CV_WARP_INVERSE_MAP, BORDER_TRANSPARENT);
 //
 //	imshow("merge I1 and I2", K);
+
+    //Interpolation for rectified images
+    Mat A = H2*F*H1.inv();
+    Mat IR(2*I1.cols, 2*I1.rows, CV_8U);
+    double i = 2;
+    for(int y=0; y<R1.rows; y++){
+        for(int x1=0; x1<R1.cols; x1++){
+            Vec3d p1(x1,y,1);
+            Mat p2 = A*Mat(p1);
+            int x2 = int(p2.at<double>(0,0) / p2.at<double>(2,0));
+            int x_i = int((2-i)*x1 + (i-1)*x2);
+            IR.at<uchar>(y,x_i) = (2-i)*R1.at<uchar>(y,x1) + (i-1)*R2.at<uchar>(y,x2);
+        }
+    }
+    imshow("IR", IR);
 
 	waitKey(0);
 	return 0;
