@@ -10,13 +10,17 @@
 using namespace std;
 using namespace cv;
 
+bool distance_for_matches(DMatch d_i, DMatch d_j) {
+    return d_i.distance < d_j.distance;
+}
+
 int main()
 {
 //	Image<uchar> I1 = Image<uchar>(imread("../face00.tif", CV_LOAD_IMAGE_GRAYSCALE));
 //	Image<uchar> I2 = Image<uchar>(imread("../face01.tif", CV_LOAD_IMAGE_GRAYSCALE));
 
-    Image<uchar> I1 = Image<uchar>(imread("../perra_7.jpg", CV_LOAD_IMAGE_GRAYSCALE));
-	Image<uchar> I2 = Image<uchar>(imread("../perra_8.jpg", CV_LOAD_IMAGE_GRAYSCALE));
+    Image<uchar> I1 = Image<uchar>(imread("../images/perra_7.jpg", CV_LOAD_IMAGE_GRAYSCALE));
+	Image<uchar> I2 = Image<uchar>(imread("../images/perra_8.jpg", CV_LOAD_IMAGE_GRAYSCALE));
 
 	cout << I1.rows << I1.cols << endl;
 	cout << I2.rows << I2.cols << endl;
@@ -48,7 +52,7 @@ int main()
 	// Official doc:Brute-force descriptor matcher.
     //
     //For each descriptor in the first set, this matcher finds the closest descriptor in the second set by trying each one.
-	BFMatcher matcher(NORM_L2);
+	BFMatcher matcher(NORM_HAMMING, true);
     vector<DMatch>  matches;
     matcher.match(desc1, desc2, matches);
 
@@ -58,26 +62,16 @@ int main()
     imshow("match", res);
     waitKey(0);
 
-    double max_dist = 0; double min_dist = 100;
-
-    //-- Quick calculation of max and min distances between keypoints
-    for( int i = 0; i < matches.size(); i++ )
-    { double dist = matches[i].distance;
-        if( dist < min_dist ) min_dist = dist;
-        if( dist > max_dist ) max_dist = dist;
-    }
-
-    printf("-- Max dist : %f \n", max_dist );
-    printf("-- Min dist : %f \n", min_dist );
+    sort(matches.begin(), matches.end(), distance_for_matches);
 
     //-- Draw only "good" matches (i.e. whose distance is less than 3*min_dist )
-    vector< DMatch > good_matches;
-
-    for( int i = 0; i < matches.size(); i++ )
-    { if( matches[i].distance < 3*min_dist )
-        { good_matches.push_back( matches[i]); }
+    int max_good_matches = 20;
+    vector<DMatch>  good_matches;
+    for( int i = 0; i < max_good_matches; i++ )
+    {
+        good_matches.push_back( matches[i]);
     }
-
+    cout << "The size of the good_matches is: " << good_matches.size() << endl;
 
     //-- Localize the object
     std::vector<Point2f> obj;
@@ -89,14 +83,6 @@ int main()
         obj.push_back( m1[ good_matches[i].queryIdx ].pt );
         scene.push_back( m2[ good_matches[i].trainIdx ].pt );
     }
-
-
-    // Mat H = findHomography(...
-//    vector< Point2f> keypts1, keypts2;
-//    for (int i =0; i<matches.size(); i++){
-//        keypts1.push_back(m1[matches[i].queryIdx].pt);
-//        keypts2.push_back(m2[matches[i].trainIdx].pt);
-//    }
 
     Mat mask;
     Mat H = findHomography(obj, scene, CV_RANSAC, 3);
