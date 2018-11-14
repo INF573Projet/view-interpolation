@@ -10,16 +10,43 @@
 using namespace std;
 using namespace cv;
 
+bool distance_for_matches(DMatch d_i, DMatch d_j) {
+    return d_i.distance < d_j.distance;
+}
+
+struct Data {
+	Mat R1, R2;
+	Mat disparity;
+};
+
+void onMouse(int event, int x, int y, int foo, void* p)
+{
+	if (event != CV_EVENT_LBUTTONDOWN)
+		return;
+	Point m1(x, y);
+	Data* D = (Data*)p;
+	circle(D->R1, m1, 2, Scalar(0, 255, 0), 2);
+	imshow("R1", D->R1);
+//	circle(D->disparity, m1, 2, Scalar(0, 255, 0), 2);
+//	imshow("disparity", D->disparity);
+
+	short d = D->disparity.at<short>(y, x);
+    cout<<"Disparity at point (" << x << "; " << y << "): " << d << endl;
+	Point m2(x - d, y);
+    circle(D->R2,m2,2,Scalar(0,255,0),2);
+	imshow("R2", D->R2);
+}
+
 int main()
 {
 //	Image<uchar> I1 = Image<uchar>(imread("../face00.tif", CV_LOAD_IMAGE_GRAYSCALE));
 //	Image<uchar> I2 = Image<uchar>(imread("../face01.tif", CV_LOAD_IMAGE_GRAYSCALE));
 
-    Image<uchar> I1 = Image<uchar>(imread("../perra_7.jpg", CV_LOAD_IMAGE_GRAYSCALE));
-	Image<uchar> I2 = Image<uchar>(imread("../perra_8.jpg", CV_LOAD_IMAGE_GRAYSCALE));
+    Image<uchar> I1 = Image<uchar>(imread("../images/perra_7.jpg", CV_LOAD_IMAGE_GRAYSCALE));
+	Image<uchar> I2 = Image<uchar>(imread("../images/perra_8.jpg", CV_LOAD_IMAGE_GRAYSCALE));
 
-	cout << I1.rows << I1.cols << endl;
-	cout << I2.rows << I2.cols << endl;
+	cout << "Size of img1: " << I1.rows << "*" << I1.cols << endl;
+	cout << "Size of img2: " << I2.rows << "*" << I2.cols << endl;
 
 	namedWindow("I1", 1);
 	namedWindow("I2", 1);
@@ -48,9 +75,10 @@ int main()
 	// Official doc:Brute-force descriptor matcher.
     //
     //For each descriptor in the first set, this matcher finds the closest descriptor in the second set by trying each one.
-	BFMatcher matcher(NORM_L2);
+	BFMatcher matcher(NORM_HAMMING, true);
     vector<DMatch>  matches;
     matcher.match(desc1, desc2, matches);
+    cout << matches.size() << " matches for BF Matching" << endl;
 
     // drawMatches ...
     Mat res;
@@ -58,26 +86,16 @@ int main()
     imshow("match", res);
     waitKey(0);
 
-    double max_dist = 0; double min_dist = 100;
-
-    //-- Quick calculation of max and min distances between keypoints
-    for( int i = 0; i < matches.size(); i++ )
-    { double dist = matches[i].distance;
-        if( dist < min_dist ) min_dist = dist;
-        if( dist > max_dist ) max_dist = dist;
-    }
-
-    printf("-- Max dist : %f \n", max_dist );
-    printf("-- Min dist : %f \n", min_dist );
+    sort(matches.begin(), matches.end(), distance_for_matches);
 
     //-- Draw only "good" matches (i.e. whose distance is less than 3*min_dist )
-    vector< DMatch > good_matches;
-
-    for( int i = 0; i < matches.size(); i++ )
-    { if( matches[i].distance < 3*min_dist )
-        { good_matches.push_back( matches[i]); }
+    int max_good_matches = 300;
+    vector<DMatch>  good_matches;
+    for( int i = 0; i < max_good_matches; i++ )
+    {
+        good_matches.push_back( matches[i]);
     }
-
+    cout << "The size of the good_matches is: " << good_matches.size() << endl;
 
     //-- Localize the object
     std::vector<Point2f> obj;
@@ -90,20 +108,9 @@ int main()
         scene.push_back( m2[ good_matches[i].trainIdx ].pt );
     }
 
-
-    // Mat H = findHomography(...
-//    vector< Point2f> keypts1, keypts2;
-//    for (int i =0; i<matches.size(); i++){
-//        keypts1.push_back(m1[matches[i].queryIdx].pt);
-//        keypts2.push_back(m2[matches[i].trainIdx].pt);
-//    }
-
     Mat mask;
-    Mat H = findHomography(obj, scene, CV_RANSAC, 3);
-    cout << H << endl;
     Mat F = findFundamentalMat(obj, scene, CV_FM_RANSAC, 3., 0.99, mask);
-    cout << F << endl;
-    //cout << "Homography matrix" << H << endl;
+    cout << "Fundamental matrix: " << F << endl;
 
     vector< Point2f> correct_matches1, correct_matches2;
     vector< DMatch> correct_matches;
@@ -118,10 +125,11 @@ int main()
     imshow("correct match", res);
     waitKey(0);
 
+    // Rectify the images
     Mat H1, H2;
     stereoRectifyUncalibrated(correct_matches1, correct_matches2, F, I1.size(), H1, H2, 1);
-    Mat R1(I1.cols, I1.rows, CV_8U);
-    Mat R2(I2.cols, I2.rows, CV_8U);
+
+    Mat R1, R2;
     warpPerspective(I1, R1, H1, R1.size());
     warpPerspective(I2, R2, H2, R2.size());
     imshow("R1", R1);
@@ -159,30 +167,24 @@ int main()
 //    Mat R1 = imread("../chess_1.jpg", CV_LOAD_IMAGE_GRAYSCALE);
 //	Mat R2 = imread("../chess_2.jpg", CV_LOAD_IMAGE_GRAYSCALE);
 
+    // Compute disparity mapping
     Mat disparity;
+    Ptr<StereoSGBM> SGBM = StereoSGBM::create();
+    SGBM->compute(R1, R2, disparity);
 
-    Ptr<StereoBM> SBM = StereoBM::create();
-    SBM->compute(R1, R2, disparity);
-
-    int a = 200;
-    int b = 150;
-    for(int i=a-50; i<a+50; i++){
-        for(int j=b-50; j<b+50; j++){
-            cout << disparity.at<short>(j,i) << endl;
+    for(int i=0; i<disparity.rows; i++){
+        for(int j=0; j<disparity.cols; j++){
+            disparity.at<short>(i,j) = disparity.at<short>(i,j) / 16;
         }
     }
 
-    //Finding corresponding points
+    imshow("disparity", Image<short>(disparity).greyImage());
 
-	Point t1(a,b);
-	circle(R1, t1, 2, Scalar(0,0,0), 2);
-	imshow("R1", R1);
-	waitKey(0);
-
-	cout << "disparity = " << disparity.at<short>(b, a) << endl;
-	Point t2(a-disparity.at<short>(b, a), b);
-	circle(R2, t2, 2, Scalar(0,0,0), 2);
-	imshow("R2", R2);
+    Data data;
+    data.R1 = R1;
+    data.R2 = R2;
+    data.disparity = disparity;
+	setMouseCallback("R1", onMouse, &data);
 	waitKey(0);
 
 	return 0;
