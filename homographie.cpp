@@ -27,9 +27,12 @@ void onMouse(int event, int x, int y, int foo, void* p)
 	Data* D = (Data*)p;
 	circle(D->R1, m1, 2, Scalar(0, 255, 0), 2);
 	imshow("R1", D->R1);
+//	circle(D->disparity, m1, 2, Scalar(0, 255, 0), 2);
+//	imshow("disparity", D->disparity);
 
 	short d = D->disparity.at<short>(y, x);
-	Point m2(x + d, y);
+    cout<<"Disparity at point (" << x << "; " << y << "): " << d << endl;
+	Point m2(x - d, y);
     circle(D->R2,m2,2,Scalar(0,255,0),2);
 	imshow("R2", D->R2);
 }
@@ -169,9 +172,13 @@ int main()
     Ptr<StereoSGBM> SGBM = StereoSGBM::create();
     SGBM->compute(R1, R2, disparity);
 
-    Mat disparity8u;
-    disparity.convertTo(disparity8u, CV_8U);
-    imshow("disparity", disparity8u);
+    for(int i=0; i<disparity.rows; i++){
+        for(int j=0; j<disparity.cols; j++){
+            disparity.at<short>(i,j) = disparity.at<short>(i,j) / 16;
+        }
+    }
+
+    imshow("disparity", Image<short>(disparity).greyImage());
 
     Data data;
     data.R1 = R1;
