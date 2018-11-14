@@ -37,15 +37,8 @@ void onMouse(int event, int x, int y, int foo, void* p)
 	imshow("R2", D->R2);
 }
 
-int main()
-{
-//	Image<uchar> I1 = Image<uchar>(imread("../face00.tif", CV_LOAD_IMAGE_GRAYSCALE));
-//	Image<uchar> I2 = Image<uchar>(imread("../face01.tif", CV_LOAD_IMAGE_GRAYSCALE));
-
-    Image<uchar> I1 = Image<uchar>(imread("../images/perra_7.jpg", CV_LOAD_IMAGE_GRAYSCALE));
-	Image<uchar> I2 = Image<uchar>(imread("../images/perra_8.jpg", CV_LOAD_IMAGE_GRAYSCALE));
-
-	cout << "Size of img1: " << I1.rows << "*" << I1.cols << endl;
+void rectififyImages(const Image<uchar>&I1, const Image<uchar>& I2, Mat& R1, Mat& R2){
+    cout << "Size of img1: " << I1.rows << "*" << I1.cols << endl;
 	cout << "Size of img2: " << I2.rows << "*" << I2.cols << endl;
 
 	namedWindow("I1", 1);
@@ -128,17 +121,15 @@ int main()
     // Rectify the images
     Mat H1, H2;
     stereoRectifyUncalibrated(correct_matches1, correct_matches2, F, I1.size(), H1, H2, 1);
-
-    Mat R1, R2;
     warpPerspective(I1, R1, H1, R1.size());
     warpPerspective(I2, R2, H2, R2.size());
-    imshow("R1", R1);
-    imshow("R2", R2);
 
     imwrite("../rectified1.png", R1);
     imwrite("../rectified2.png", R2);
+}
 
-	// merge two images
+void interpolate(){
+    	// merge two images
 //	Mat K(2 * I1.cols, I1.rows, CV_8U);
 //    Mat idmatrix = Mat::eye(3,3,CV_32F);
 //	warpPerspective(I1, K, idmatrix, Size(2*I1.cols, I1.rows));
@@ -168,9 +159,35 @@ int main()
 //	Mat R2 = imread("../chess_2.jpg", CV_LOAD_IMAGE_GRAYSCALE);
 
     // Compute disparity mapping
+}
+
+int main()
+{
+    Mat R1, R2;
+
+    Image<uchar> I1 = Image<uchar>(imread("../images/perra_7.jpg", CV_LOAD_IMAGE_GRAYSCALE));
+	Image<uchar> I2 = Image<uchar>(imread("../images/perra_8.jpg", CV_LOAD_IMAGE_GRAYSCALE));
+    rectififyImages(I1, I2, R1, R2);
+
+//    R1 = imread("../images/left.png", CV_LOAD_IMAGE_GRAYSCALE);
+//    R2 = imread("../images/right.png", CV_LOAD_IMAGE_GRAYSCALE);
+    imshow("R1", R1);
+    imshow("R2", R2);
+
     Mat disparity;
-    Ptr<StereoSGBM> SGBM = StereoSGBM::create();
-    SGBM->compute(R1, R2, disparity);
+    Ptr<StereoSGBM> sgbm_ = StereoSGBM::create();
+    sgbm_->setBlockSize(5);
+    sgbm_->setDisp12MaxDiff(-1);
+    sgbm_->setP1(600);
+    sgbm_->setP2(2400);
+    sgbm_->setMinDisparity(-64);
+    sgbm_->setNumDisparities(192);
+    sgbm_->setUniquenessRatio(1);
+    sgbm_->setPreFilterCap(4);
+    sgbm_->setSpeckleRange(2);
+    sgbm_->setSpeckleWindowSize(150);
+
+    sgbm_->compute(R1, R2, disparity);
 
     for(int i=0; i<disparity.rows; i++){
         for(int j=0; j<disparity.cols; j++){
