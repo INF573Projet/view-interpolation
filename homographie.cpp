@@ -132,7 +132,6 @@ void rectififyImages(const Image<uchar>&I1, const Image<uchar>& I2, Mat& R1, Mat
 
 void interpolate(){
     	// merge two images
-=======
 //	Image<uchar> I1 = Image<uchar>(imread("../image1.jpg", CV_LOAD_IMAGE_GRAYSCALE));
 //	Image<uchar> I2 = Image<uchar>(imread("../image2.jpg", CV_LOAD_IMAGE_GRAYSCALE));
 //	cout << I1.rows << I1.cols << endl;
