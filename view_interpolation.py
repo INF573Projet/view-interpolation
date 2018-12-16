@@ -255,9 +255,9 @@ def deRectify(ir, theta1, theta2, T1, T2, s, i):
 
 
 def main():
-    left = cv2.imread('./images/dogL.jpg')
-
-    right = cv2.imread('./images/dogR.jpg')
+    print("Reading images...")
+    left = cv2.imread('./images/perra_7.jpg')
+    right = cv2.imread('./images/perra_8.jpg')
 
     # left = cv2.cvtColor(left, cv2.COLOR_BGR2GRAY)
     # right = cv2.cvtColor(right, cv2.COLOR_BGR2GRAY)
@@ -281,6 +281,7 @@ def main():
     # # plt.show()
     # cv2.imwrite("knnmatch.jpg", img3)
 
+    print("Compute keypoints matching...")
     akaze = cv2.AKAZE_create()
     # akaze = cv2.xfeatures2d.SIFT_create()
 
@@ -322,28 +323,33 @@ def main():
     # plt.imshow(res)
     # plt.show()
 
-    cv2.imwrite("keypoints.jpg", res)
+    cv2.imwrite("./results/details/keypoints.jpg", res)
 
+    print("Computing rectification...")
     grey1 = cv2.cvtColor(left, cv2.COLOR_BGR2GRAY)
     grey2 = cv2.cvtColor(right, cv2.COLOR_BGR2GRAY)
 
     dst1, dst2, theta1, theta2, s, T1, T2 = rectify(np.array(obj), np.array(scene), grey1, grey2)
-    cv2.imwrite("test1.png", dst1)
-    cv2.imwrite("test2.png", dst2)
+    cv2.imwrite("./results/details/rectify1.png", dst1)
+    cv2.imwrite("./results/details/rectify2.png", dst2)
 
+    print("Computing disparity...")
     disparity = disparity_map(dst1, dst2)
     disparity_img = grayImage(disparity)
-    cv2.imwrite("disparity.png", disparity_img)
+    cv2.imwrite("./results/details/disparity.png", disparity_img)
     print(disparity_img)
 
+    print("Computing interpolation...")
     ir = interpolate(1.5, dst1, dst2, disparity)
+    cv2.imwrite("./results/details/interpolated.png", ir)
 
     # ir = cv2.imread("./IR_rectified.jpg")
     # ir = cv2.cvtColor(ir, cv2.COLOR_BGR2GRAY)
     # print(ir.shape)
 
+    print("Computing derectification...")
     de_rect = deRectify(ir, theta1, theta2, T1, T2, s, 1.5)
-    cv2.imwrite("derectified.png", de_rect)
+    cv2.imwrite("./results/details/derectified.png", de_rect)
     # print(type(grey2[100:120, 120:130]))
     # print(dst1[100:120, 120:130])
 
