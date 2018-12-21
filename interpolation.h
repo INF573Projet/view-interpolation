@@ -5,6 +5,16 @@
 #ifndef VIEW_INTERPOLATION_INTERPOLATION_H
 #define VIEW_INTERPOLATION_INTERPOLATION_H
 
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/features2d/features2d.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+#include "opencv2/imgproc/imgproc.hpp"
+
+#include "Eigen/Core"
+#include "Eigen/SVD"
+#include "Eigen/Dense"
+#include <math.h>
+#include <iostream>
 
 #include "image.h"
 
@@ -12,8 +22,8 @@ struct RectParam{
     //TODO : check the right type for T1 and T2
     double theta1;
     double theta2;
-    Point2d T1;
-    Point2d T2;
+    Eigen::Vector2d T1;
+    Eigen::Vector2d T2;
     double s;
     double i;
 
