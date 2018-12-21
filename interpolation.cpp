@@ -304,8 +304,8 @@ int main()
 
     cout << "Derectifying interpolated view..." << endl;
     Image<uchar> I;
-    Interpolation::derectify(IR, I);
-    imshow("left + rrectified", I);
+    Interpolation::derectify(IR, D, I);
+    imshow("left + right", I);
     waitKey(0);
 
 	return 0;
