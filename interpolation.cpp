@@ -2,9 +2,10 @@
 #include <opencv2/features2d/features2d.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 #include "opencv2/imgproc/imgproc.hpp"
-#include <Eigen/Core>
-#include <Eigen/Dense>
-#include <Eigen/SVD>
+
+#include "Eigen/Core"
+#include "Eigen/SVD"
+#include "Eigen/Dense"
 #include <math.h>
 #include <iostream>
 
@@ -18,30 +19,101 @@ bool distance_for_matches(DMatch d_i, DMatch d_j) {
     return d_i.distance < d_j.distance;
 }
 
-struct Data {
-	Mat R1, R2;
-	Mat disparity;
-};
+//struct Data {
+//	Mat R1, R2;
+//	Mat disparity;
+//};
+//
+//void onMouse(int event, int x, int y, int foo, void* p)
+//{
+//	if (event != CV_EVENT_LBUTTONDOWN)
+//		return;
+//	Point m1(x, y);
+//	Data* D = (Data*)p;
+//	circle(D->R1, m1, 2, Scalar(0, 255, 0), 2);
+//	imshow("R1", D->R1);
+////	circle(D->disparity, m1, 2, Scalar(0, 255, 0), 2);
+////	imshow("disparity", D->disparity);
+//
+//	short d = D->disparity.at<short>(y, x);
+//    cout<<"Disparity at point (" << x << "; " << y << "): " << d << endl;
+//	Point m2(x - d, y);
+//    circle(D->R2,m2,2,Scalar(0,255,0),2);
+//	imshow("R2", D->R2);
+//}
 
-void onMouse(int event, int x, int y, int foo, void* p)
-{
-	if (event != CV_EVENT_LBUTTONDOWN)
-		return;
-	Point m1(x, y);
-	Data* D = (Data*)p;
-	circle(D->R1, m1, 2, Scalar(0, 255, 0), 2);
-	imshow("R1", D->R1);
-//	circle(D->disparity, m1, 2, Scalar(0, 255, 0), 2);
-//	imshow("disparity", D->disparity);
+void matchingKeypoints(const Image<uchar>&I1, const Image<uchar>& I2, int max_good_matches, vector<Point2f>& kptsL, vector<Point2f>& kptsR, bool display=false) {
+    //Finding keypoints
+    Ptr<AKAZE> D = AKAZE::create();
+    vector<KeyPoint> m1, m2;
+    Mat desc1, desc2;
+    D->detectAndCompute(I1, noArray(), m1, desc1);
+    D->detectAndCompute(I2, noArray(), m2, desc2);
+    if(display){
+        //Displaying keypoints
+        Mat J1;
+        drawKeypoints(I1, m1, J1);
+        imshow("I1", J1);
+        Mat J2;
+        drawKeypoints(I2, m2, J2);
+        imshow("I2", J2);
+        waitKey(0);
+    }
 
-	short d = D->disparity.at<short>(y, x);
-    cout<<"Disparity at point (" << x << "; " << y << "): " << d << endl;
-	Point m2(x - d, y);
-    circle(D->R2,m2,2,Scalar(0,255,0),2);
-	imshow("R2", D->R2);
+    //For each descriptor in the first set, this matcher finds the closest descriptor in the second set by trying each one.
+    BFMatcher matcher(NORM_HAMMING, true);
+    vector<DMatch>  matches;
+    matcher.match(desc1, desc2, matches);
+    cout << matches.size() << " matches for BF Matching" << endl;
+    if(display){
+        //Displaying matches
+        Mat res;
+        drawMatches(I1, m1, I2, m2, matches, res);
+        imshow("match", res);
+        waitKey(0);
+    }
+
+    sort(matches.begin(), matches.end(), distance_for_matches);
+    //-- Draw only "good" matches (first max_good_matches)
+    vector<DMatch>  good_matches;
+    for( int i = 0; i < max_good_matches; i++ )
+    {
+        good_matches.push_back( matches[i]);
+    }
+
+    //-- Localize the object
+    std::vector<Point2f> obj;
+    std::vector<Point2f> scene;
+    for( int i = 0; i < good_matches.size(); i++ )
+    {
+        //-- Get the keypoints from the good matches
+        obj.push_back( m1[ good_matches[i].queryIdx ].pt );
+        scene.push_back( m2[ good_matches[i].trainIdx ].pt );
+    }
+
+    Mat mask;
+    Mat F = findFundamentalMat(obj, scene, CV_FM_RANSAC, 3., 0.99, mask);
+    cout << "Fundamental matrix: " << F << endl;
+    vector<DMatch> correct_matches;
+    for(int i = 0; i < mask.rows; i++){
+        if( mask.at<uchar>(i, 0) > 0){
+            kptsL.push_back(obj[i]);
+            kptsR.push_back(scene[i]);
+            correct_matches.push_back(matches[i]);
+        }
+    }
+    cout << "Final number of keypoints matches: " << correct_matches.size() << endl;
+
+    if(display){
+        Mat res;
+        drawMatches(I1, m1, I2, m2, correct_matches, res);
+        imshow("correct match", res);
+        waitKey(0);
+    }
+
 }
 
-void rectify(const Image<uchar>&I1, const Image<uchar>& I2, vector<Point2f> kptsL, vector<Point2f> kptsR, Image<uchar>& rectified){
+void rectify(const Image<uchar>&I1, const Image<uchar>& I2, const vector<Point2f>& kptsL, const vector<Point2f>& kptsR, Image<uchar>& R1, Image<uchar>& R2) {
 
     // compute mean of x_value and y_value of key points in imgL
     double x_meanL = 0.;
@@ -113,12 +185,12 @@ void rectify(const Image<uchar>&I1, const Image<uchar>& I2, vector<Point2f> kpts
 
     //rotation matrix, R1 = np.array([[cos(theta1), sin(theta1)],
     //                              [-sin(theta1), cos(theta1)]])
-    Matrix2d R1, R2;
-    R1(0,0) = cos(theta1); R1(0,1) = sin(theta1);
-    R1(1,0) = -sin(theta1);R1(1,1) = cos(theta1);
+    Matrix2d rot1, rot2;
+    rot1(0,0) = cos(theta1); rot1(0,1) = sin(theta1);
+    rot1(1,0) = -sin(theta1);rot1(1,1) = cos(theta1);
 
-    R2(0,0) = cos(theta1); R2(0,1) = sin(theta1);
-    R2(1,0) = -sin(theta1);R2(1,1) = cos(theta1);
+    rot2(0,0) = cos(theta1); rot2(0,1) = sin(theta1);
+    rot2(1,0) = -sin(theta1);rot2(1,1) = cos(theta1);
 
     //calculate B and B_inv, B[:2, :] = np.dot(R1, U1_prime), B[2, :] = np.dot(R2, U2_prime)[0, :]
     //    try:
@@ -127,8 +199,8 @@ void rectify(const Image<uchar>&I1, const Image<uchar>& I2, vector<Point2f> kpts
     //        B[2, :] = np.array([0, 0, 1])
     //        B_inv = np.linalg.inv(B)
     Matrix3d B, B_inv;
-    B.block(0,0,2,3) = R1*U1_prime;
-    B.bottomRows(1) = (R2*U2_prime).topRows(1);
+    B.block(0,0,2,3) = rot1*U1_prime;
+    B.bottomRows(1) = (rot2*U2_prime).topRows(1);
     if(B.determinant()!=0){
         B_inv = B.inverse();
     }else{
@@ -139,7 +211,7 @@ void rectify(const Image<uchar>&I1, const Image<uchar>& I2, vector<Point2f> kpts
     //    H_s = np.array([[1, 0],
     //                    [0, 1. / s]])
     MatrixXd tmp;
-    tmp = R2*(U2_prime*B_inv);
+    tmp = rot2*(U2_prime*B_inv);
     double s = tmp(1,1);
     MatrixXd H_s(2,2);
     H_s(0,0) = 1;H_s(0,1) = 0;
@@ -236,7 +308,7 @@ void rectififyImages(const Image<uchar>&I1, const Image<uchar>& I2, Mat& R1, Mat
 
 }
 
-void disparityMapping(const Mat& R1, const Mat& R2, Mat& disparity){
+void disparityMapping(const Image<uchar>& R1, const Image<uchar>& R2, Image<short>& disparity){
     Ptr<StereoSGBM> sgbm_ = StereoSGBM::create();
     sgbm_->setBlockSize(5);
     sgbm_->setDisp12MaxDiff(-1);
@@ -251,57 +323,74 @@ void disparityMapping(const Mat& R1, const Mat& R2, Mat& disparity){
 
     sgbm_->compute(R1, R2, disparity);
 
-    for(int i=0; i<disparity.rows; i++){
-        for(int j=0; j<disparity.cols; j++){
-            disparity.at<short>(i,j) = disparity.at<short>(i,j) / 16;
+    for(int x=0; x<disparity.width(); x++){
+        for(int y=0; y<disparity.height(); y++){
+            disparity(x,y) = short(disparity(x,y) / 16);
         }
     }
-
-    imshow("disparity", Image<short>(disparity).greyImage());
 }
 
-void interpolate(int i, const Mat& R1, const Mat& R2, const Mat& disparity, Image<uchar>& IR){
-    for(int y=0; y<R1.rows; y++){
-        for(int x1=0; x1<R1.cols; x1++){
-            int x2 = x1 - disparity.at<uchar>(y,x1);
+void interpolate(float i, const Image<uchar>& R1, const Image<uchar>& R2, const Image<short>& disparity, Image<uchar>& IR){
+    for(int y=0; y<R1.height(); y++){
+        for(int x1=0; x1<R1.width(); x1++){
+            int x2 = x1 - disparity(x1,y);
             int x_i = int((2-i)*x1 + (i-1)*x2);
             if(x_i >=0 && x_i < IR.width()){
-                IR.at<uchar>(y,x_i) = (2-i)*R1.at<uchar>(y,x1) + (i-1)*R2.at<uchar>(y,x2);
+                IR(x_i, y) = uchar((2-i)*R1(x1,y) + (i-1)*R2(x2,y));
             } else {
-                IR.at<uchar>(y,x_i) = 0;
+                IR(x_i, y) = 0;
             }
         }
     }
-    imshow("IR", IR);
-    waitKey(0);
+}
+
+void derectify(const Image<uchar>& IR, Image<uchar>& I){
+
 
 }
 
 int main()
 {
-    Mat R1, R2;
+    /* Parameters */
+    int max_good_matches = 300;
+    float i = 1.5;
 
+
+    cout << "Reading left and right images..." << endl;
     Image<uchar> I1 = Image<uchar>(imread("../images/perra_7.jpg", CV_LOAD_IMAGE_GRAYSCALE));
 	Image<uchar> I2 = Image<uchar>(imread("../images/perra_8.jpg", CV_LOAD_IMAGE_GRAYSCALE));
-    rectififyImages(I1, I2, R1, R2);
+	imshow("left", I1);
+    imshow("right", I2);
+    waitKey(0);
 
-//    R1 = imread("../images/left.png", CV_LOAD_IMAGE_GRAYSCALE);
-//    R2 = imread("../images/right.png", CV_LOAD_IMAGE_GRAYSCALE);
-    imshow("R1", R1);
-    imshow("R2", R2);
+	cout << "Finding keypoints and matching them..." << endl;
+    vector<Point2f> kptsL, kptsR;
+    matchingKeypoints(I1, I2, max_good_matches, kptsL, kptsR, false);
 
-    Mat disparity;
-    disparityMapping(R1, R2, disparity);
-
-    Data data;
-    data.R1 = R1;
-    data.R2 = R2;
-    data.disparity = disparity;
-	setMouseCallback("R1", onMouse, &data);
-	waitKey(0);
-
-    Image<uchar> IR(R1.cols, R1.rows);
-    interpolate(1.5, R1, R2, disparity, IR);
+    cout << "Rectifying images..." << endl;
+    Image<uchar> R1, R2;
+    rectify(I1, I2, kptsL, kptsR, R1, R2);
+    imshow("left_rectified", R1);
+    imshow("right_rectified", R2);
+    waitKey(0);g
+//
+//    cout << "Computing disparity..." << endl;
+//    Image<short> disparity;
+//    disparityMapping(R1, R2, disparity);
+//    imshow("disparity", Image<short>(disparity).greyImage());
+//    waitKey(0);
+//
+//    cout << "Interpolating rectified intermediate view..." << endl;
+//    Image<uchar> IR;
+//    interpolate(i, R1, R2, disparity, IR);
+//    imshow("left_rectified + right_rectified", IR);
+//    waitKey(0);
+//
+//    cout << "Derectifying interpolated view..." << endl;
+//    Image<uchar> I;
+//    derectify(IR, I);
+//    imshow("left + rrectified", I);
+//    waitKey(0);
 
 	return 0;
 }

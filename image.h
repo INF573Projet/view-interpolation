@@ -27,6 +27,11 @@ struct pixel_type<float>
 {
 	static const int value = CV_32F;
 };
+template <>
+struct pixel_type<short>
+{
+	static const int value = CV_16S;
+};
 
 template <typename T> class Image : public Mat {
 public:
