@@ -2,12 +2,16 @@
 #include <opencv2/features2d/features2d.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 #include "opencv2/imgproc/imgproc.hpp"
-
+#include <Eigen/Core>
+#include <Eigen/Dense>
+#include <Eigen/SVD>
+#include <math.h>
 #include <iostream>
 
 #include "image.h"
 
 using namespace std;
+using namespace Eigen;
 using namespace cv;
 
 bool distance_for_matches(DMatch d_i, DMatch d_j) {
@@ -35,6 +39,116 @@ void onMouse(int event, int x, int y, int foo, void* p)
 	Point m2(x - d, y);
     circle(D->R2,m2,2,Scalar(0,255,0),2);
 	imshow("R2", D->R2);
+}
+
+void rectify(const Image<uchar>&I1, const Image<uchar>& I2, vector<Point2f> kptsL, vector<Point2f> kptsR, Image<uchar>& rectified){
+
+    // compute mean of x_value and y_value of key points in imgL
+    double x_meanL = 0.;
+    double y_meanL = 0.;
+    for (auto &i : kptsL) {
+        x_meanL += i.x;
+        y_meanL += i.y;
+    }
+    // compute mean of x_value and y_value of key points in imgR
+    double x_meanR = 0.;
+    double y_meanR = 0.;
+    for (auto &i : kptsR) {
+        x_meanR += i.x;
+        y_meanR += i.y;
+    }
+
+    // measurement matrix
+    MatrixXd M(4, kptsL.size());
+    for(int i=0; i<kptsL.size(); i++){
+        M(0, i) = kptsL[i].x - x_meanL;
+        M(1, i) = kptsL[i].y - y_meanL;
+        M(2, i) = kptsR[i].x - x_meanR;
+        M(3, i) = kptsR[i].y - y_meanR;
+    }
+
+    // Singular value decomposition of M
+    JacobiSVD<MatrixXd> svd( M, ComputeFullV | ComputeFullU );
+    cout << svd.computeU() << endl;
+    MatrixXd U = svd.matrixU();
+
+    //    U_ = U[:, :3], U1 = U_[:2, :], U2 = U_[2:, :]
+    MatrixXd U_ = U.leftCols(3);
+    MatrixXd U1 = U_.topRows(2);
+    MatrixXd U2 = U_.bottomRows(2);
+
+    // A1 = U1[:2, :2], d1 = U1[:, 2], A2 = U2[:2, :2], d2 = U2[:, 2]
+    MatrixXd A1 = U1.block(0,0,2,2);
+    MatrixXd d1 = U1.col(2);
+    MatrixXd A2 = U2.block(0,0,2,2);
+    MatrixXd d2 = U2.col(2);
+
+    //    define B_i, U_1' and U_2'
+    Matrix3d B1;
+    //    B1[-1, -1] = 1, B1[:2, :2] = np.linalg.inv(A1), B1[:2, 2] = -np.dot(np.linalg.inv(A1), d1)
+    B1(2,2) = 1;
+    B1(2,0) = 0;
+    B1(2,1) = 0;
+    B1.block(0,0,2,2) = A1.inverse();
+    B1.block(0,2,2,1) = A1.inverse()*d1;
+
+    Matrix3d B2;
+    B2(2,2) = 1;
+    B2(2,0) = 0;
+    B2(2,1) = 0;
+    B2.block(0,0,2,2) = A2.inverse();
+    B2.block(0,2,2,1) = A2.inverse()*d2;
+
+    // U1_prime = np.dot(U1, B2), U2_prime = np.dot(U2, B1)
+    MatrixXd U1_prime = U1*B2;
+    MatrixXd U2_prime = U2*B1;
+
+    //calculate theta1, theta2, x1 = U1_prime[0, -1], y1 = U1_prime[1, -1]
+    //theta1 = np.arctan(y1 / x1)
+    double x1 = U1_prime(0, 2); double y1 = U1_prime(1, 2);
+    double theta1 = atan(y1 / x1);
+
+    double x2 = U1_prime(0, 2); double y2 = U1_prime(1, 2);
+    double theta2 = atan(y2 / x2);
+
+    //rotation matrix, R1 = np.array([[cos(theta1), sin(theta1)],
+    //                              [-sin(theta1), cos(theta1)]])
+    Matrix2d R1, R2;
+    R1(0,0) = cos(theta1); R1(0,1) = sin(theta1);
+    R1(1,0) = -sin(theta1);R1(1,1) = cos(theta1);
+
+    R2(0,0) = cos(theta1); R2(0,1) = sin(theta1);
+    R2(1,0) = -sin(theta1);R2(1,1) = cos(theta1);
+
+    //calculate B and B_inv, B[:2, :] = np.dot(R1, U1_prime), B[2, :] = np.dot(R2, U2_prime)[0, :]
+    //    try:
+    //        B_inv = np.linalg.inv(B)
+    //    except LinAlgError:
+    //        B[2, :] = np.array([0, 0, 1])
+    //        B_inv = np.linalg.inv(B)
+    Matrix3d B, B_inv;
+    B.block(0,0,2,3) = R1*U1_prime;
+    B.bottomRows(1) = (R2*U2_prime).topRows(1);
+    if(B.determinant()!=0){
+        B_inv = B.inverse();
+    }else{
+        B(2,0) = 0; B(2,1) = 0; B(2,2) = 1;
+        B_inv = B.inverse();
+    }
+    // calculate s and H_s, tmp = np.dot(R2, np.dot(U2_prime, B_inv)), s = tmp[1, 1]
+    //    H_s = np.array([[1, 0],
+    //                    [0, 1. / s]])
+    MatrixXd tmp;
+    tmp = R2*(U2_prime*B_inv);
+    double s = tmp(1,1);
+    MatrixXd H_s(2,2);
+    H_s(0,0) = 1;H_s(0,1) = 0;
+    H_s(1,0) = 0;H_s(1,1) = 1. / s;
+
+
+    // TODO: rectify two images based on above geometry matrix;
+
+
 }
 
 void rectififyImages(const Image<uchar>&I1, const Image<uchar>& I2, Mat& R1, Mat& R2){
