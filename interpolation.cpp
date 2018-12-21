@@ -192,6 +192,7 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
     H_s(0,0) = 1;H_s(0,1) = 0;
     H_s(1,0) = 0;H_s(1,1) = 1. / s;
 
+    // TODO: compute translation vectors T_1 and T_2
 
     // TODO: rectify two images based on above geometry matrix
 
@@ -249,7 +250,14 @@ void Interpolation::derectify(const Image<uchar>& IR, const RectParam &D, Image<
 //    [np.sin(theta_i), np.cos(theta_i)]])
     double theta_i = (2-D.i)*D.theta1 + (D.i-1)*D.theta2;
     double s_i = (2-D.i)*1.0 + (D.i-1)*D.s;
-    Point2d T_i;
+    Point2d T_i = (2-D.i)*D.T1 + (D.i-1)*D.T2;
+
+    MatrixXd H_s_i(2,2);
+    H_s_i(0,0) = 1;H_s_i(0,1) = 0;
+    H_s_i(1,0) = 0;H_s_i(1,1) = 1. / D.s;
+
+
+
     // TODO : finish construction of matrix and same technique to derectify
 
 

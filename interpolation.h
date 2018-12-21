@@ -9,6 +9,7 @@
 #include "image.h"
 
 struct RectParam{
+    //TODO : check the right type for T1 and T2
     double theta1;
     double theta2;
     Point2d T1;
@@ -28,12 +29,9 @@ public:
 };
 
 
-
-
 inline bool distance_for_matches(DMatch d_i, DMatch d_j) {
     return d_i.distance < d_j.distance;
 }
-
 
 
 #endif //VIEW_INTERPOLATION_INTERPOLATION_H
