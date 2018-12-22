@@ -208,11 +208,41 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
     }
     double w_min1 = map1_0.minCoeff(), w_max1 = map1_0.maxCoeff();
     double h_min1 = map1_1.minCoeff(), h_max1 = map1_1.maxCoeff();
-    //    map1[:, :, 0] = map1[:, :, 0] - w_min1
-    //    map1[:, :, 1] = map1[:, :, 1] - h_min1
-    //    rectified_h1 = int(round(h_max1 - h_min1) + 1)
-    //    rectified_w1 = int(round(w_max1 - w_min1) + 1)
-    //    rectified1 = np.zeros((rectified_h1, rectified_w1))
+
+    Vector2d w_min(w_min1, w_min1), h_min(h_min1, h_min1);
+    map1_0.colwise() -=  w_min; map1_1.colwise() -=  h_min;
+    int rectified_h1 = int(h_max1 - h_min1 + 1), rectified_w1 = int(w_max1 - w_min1 + 1);
+
+    for(int x = 0; x<rectified_w1; x++){
+        for(int y=0; y<rectified_h1; y++){
+            R1(int(map1_0(y, x)), int(map1_1(y, x))) = I1(x, y);
+        }
+    }
+
+    int rows2 = I2.rows, cols2 = I2.cols;
+    MatrixXd map2_0(rows2, cols2), map2_1(rows2, cols2);
+    for(int x = 0; x<cols2; x++){
+        for(int y=0; y<rows2; y++){
+            pos(0) = x; pos(1) = y;
+            pos = pos + T_2;
+            pos = R2 * pos;
+            map2_0(y, x) = pos(0);
+            map2_1(y, x) = pos(1);
+        }
+    }
+
+    map2_0.colwise() -=  w_min; map2_1.colwise() -=  h_min;
+    int vx, vy;
+    for(int x = 0; x<rectified_w1; x++){
+        for(int y=0; y<rectified_h1; y++){
+            vx = int(map2_0(y, x)); vy = int(map1_1(y, x));
+            if(vx>=0 && vy>=0 && vx<rectified_w1 && vy<rectified_h1){
+                R2(vx, vy) = I2(x, y);
+            }
+
+        }
+    }
+
     // TODO: save the parameters for derectification
     D.theta1 = theta1; D.theta2 = theta2;
     D.T1 = T_1; D.T2 = T_2; D.s = s;
