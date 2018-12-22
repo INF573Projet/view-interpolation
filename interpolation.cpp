@@ -109,7 +109,11 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
 
     // Singular value decomposition of M
     JacobiSVD<MatrixXd> svd( M, ComputeFullV | ComputeFullU );
-    cout << svd.computeU() << endl;
+    if(svd.computeU()){
+        cout << "SVD is successful" << endl;
+    } else {
+        cout << "SVD isn't successful" << endl;
+    }
     MatrixXd U = svd.matrixU();
 
     //    U_ = U[:, :3], U1 = U_[:2, :], U2 = U_[2:, :]
@@ -175,6 +179,7 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
         B(2,0) = 0; B(2,1) = 0; B(2,2) = 1;
         B_inv = B.inverse();
     }
+
     // calculate s and H_s, tmp = np.dot(R2, np.dot(U2_prime, B_inv)), s = tmp[1, 1]
     //    H_s = np.array([[1, 0],
     //                    [0, 1. / s]])
@@ -185,8 +190,11 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
     H_s(0,0) = 1;H_s(0,1) = 0;
     H_s(1,0) = 0;H_s(1,1) = 1. / s;
 
+
     // TODO: compute translation vectors T_1 and T_2
     Vector2d T_1(-x_meanL, -y_meanL), T_2(-x_meanR, -y_meanR);
+
+    cout << "Finished to compute rotation, scale, translation matrix or vector" << endl;
 
     // TODO: rectify two images based on above geometry matrix
     //    rows1, cols1 = img1.shape
@@ -201,7 +209,7 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
         for(int y=0; y<rows1; y++){
             pos(0) = x; pos(1) = y;
             pos = pos + T_1;
-            pos = R1 * pos;
+            pos = rot1 * pos;
             map1_0(y, x) = pos(0);
             map1_1(y, x) = pos(1);
         }
@@ -209,15 +217,20 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
     double w_min1 = map1_0.minCoeff(), w_max1 = map1_0.maxCoeff();
     double h_min1 = map1_1.minCoeff(), h_max1 = map1_1.maxCoeff();
 
-    Vector2d w_min(w_min1, w_min1), h_min(h_min1, h_min1);
-    map1_0.colwise() -=  w_min; map1_1.colwise() -=  h_min;
+
+    map1_0 = (map1_0.array() - w_min1).matrix();
+    map1_1 = (map1_1.array() - h_min1).matrix();
+
     int rectified_h1 = int(h_max1 - h_min1 + 1), rectified_w1 = int(w_max1 - w_min1 + 1);
 
-    for(int x = 0; x<rectified_w1; x++){
-        for(int y=0; y<rectified_h1; y++){
-            R1(int(map1_0(y, x)), int(map1_1(y, x))) = I1(x, y);
+    R1 = Image<uchar>(rectified_w1, rectified_h1);
+    for(int x = 0; x<cols1; x++){
+        for(int y=0; y<rows1; y++){
+            R1(int(map1_1(y, x)), int(map1_0(y, x))) = I1(x, y);
         }
     }
+    cout << "R1 builded" << endl;
+
 
     int rows2 = I2.rows, cols2 = I2.cols;
     MatrixXd map2_0(rows2, cols2), map2_1(rows2, cols2);
@@ -225,23 +238,30 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
         for(int y=0; y<rows2; y++){
             pos(0) = x; pos(1) = y;
             pos = pos + T_2;
-            pos = R2 * pos;
+            pos = rot2 * pos;
             map2_0(y, x) = pos(0);
             map2_1(y, x) = pos(1);
         }
     }
 
-    map2_0.colwise() -=  w_min; map2_1.colwise() -=  h_min;
+    map2_0 = (map2_0.array() - w_min1).matrix();
+    map2_1 = (map2_1.array() - h_min1).matrix();
+
+    cout << "Building R2" << endl;
+
     int vx, vy;
-    for(int x = 0; x<rectified_w1; x++){
-        for(int y=0; y<rectified_h1; y++){
-            vx = int(map2_0(y, x)); vy = int(map1_1(y, x));
+    R2 = Image<uchar>(rectified_w1, rectified_h1);
+    for(int x = 0; x<cols2; x++){
+        for(int y=0; y<rows2; y++){
+            vx = int(map2_1(y, x)); vy = int(map1_0(y, x));
             if(vx>=0 && vy>=0 && vx<rectified_w1 && vy<rectified_h1){
                 R2(vx, vy) = I2(x, y);
             }
 
         }
     }
+
+    cout << "R2 builded" << endl;
 
     // TODO: save the parameters for derectification
     D.theta1 = theta1; D.theta2 = theta2;
@@ -273,19 +293,19 @@ void Interpolation::disparityMapping(const Image<uchar>& R1, const Image<uchar>&
     }
 }
 
-void Interpolation::interpolate(double i, const Image<uchar>& R1, const Image<uchar>& R2, const Image<short>& disparity, Image<uchar>& IR, RectParam& D){
+void Interpolation::interpolate(const Image<uchar>& R1, const Image<uchar>& R2, const Image<short>& disparity, Image<uchar>& IR, RectParam& D){
+    IR = Image<uchar>(R1.width(), R1.height());
     for(int y=0; y<R1.height(); y++){
         for(int x1=0; x1<R1.width(); x1++){
             int x2 = x1 - disparity(x1,y);
-            int x_i = int((2-i)*x1 + (i-1)*x2);
+            int x_i = int((2-D.i)*x1 + (D.i-1)*x2);
             if(x_i >=0 && x_i < IR.width()){
-                IR(x_i, y) = uchar((2-i)*R1(x1,y) + (i-1)*R2(x2,y));
+                IR(x_i, y) = uchar((2-D.i)*R1(x1,y) + (D.i-1)*R2(x2,y));
             } else {
                 IR(x_i, y) = 0;
             }
         }
     }
-    D.i = i;
 }
 
 void Interpolation::derectify(const Image<uchar>& IR, const RectParam &D, Image<uchar>& I){
@@ -322,9 +342,9 @@ void Interpolation::derectify(const Image<uchar>& IR, const RectParam &D, Image<
     int height = int(round(yMax - yMin) + 1);
     int width = int(round(xMax - xMin) + 1);
     I = Image<uchar>(width, height);
-    for(int x=0; x<width; x++){
-        for(int y=0; y<height; y++){
-            I(int(round(xCoordinates(x,y))), int(round(yCoordinates(x,y)))) = IR(x,y);
+    for(int x=0; x<IR.cols; x++){
+        for(int y=0; y<IR.rows; y++){
+            I(int(round(xCoordinates(y,x))), int(round(yCoordinates(y,x)))) = IR(x,y);
         }
     }
 }
@@ -339,9 +359,6 @@ int main()
     cout << "Reading left and right images..." << endl;
     Image<uchar> I1 = Image<uchar>(imread("../images/perra_7.jpg", CV_LOAD_IMAGE_GRAYSCALE));
 	Image<uchar> I2 = Image<uchar>(imread("../images/perra_8.jpg", CV_LOAD_IMAGE_GRAYSCALE));
-	imshow("left", I1);
-    imshow("right", I2);
-    waitKey(0);
 
 	cout << "Finding keypoints and matching them..." << endl;
     vector<Point2f> kptsL, kptsR;
@@ -352,25 +369,32 @@ int main()
     RectParam D;
     Interpolation::rectify(I1, I2, kptsL, kptsR, R1, R2, D);
     imshow("left_rectified", R1);
+    imwrite("../results/leftRect.png", R1);
     imshow("right_rectified", R2);
+    imwrite("../results/rightRect.png", R2);
     waitKey(0);
 
     cout << "Computing disparity..." << endl;
     Image<short> disparity;
     Interpolation::disparityMapping(R1, R2, disparity);
-    imshow("disparity", Image<short>(disparity).greyImage());
+    Image<uchar> dispImg = disparity.greyImage();
+    imshow("disparity", dispImg);
+    imwrite("../results/disparity.png", dispImg);
     waitKey(0);
 
     cout << "Interpolating rectified intermediate view..." << endl;
     Image<uchar> IR;
-    Interpolation::interpolate(i, R1, R2, disparity, IR, D);
-    imshow("left_rectified + right_rectified", IR);
+    D.i = i;
+    Interpolation::interpolate(R1, R2, disparity, IR, D);
+    imshow("left_rectified-right_rectified", IR);
+    imwrite("../results/left+rightRect.png", dispImg);
     waitKey(0);
 
     cout << "Derectifying interpolated view..." << endl;
     Image<uchar> I;
     Interpolation::derectify(IR, D, I);
-    imshow("left + right", I);
+    imshow("left-right", I);
+    imwrite("../results/left+right.png", I);
     waitKey(0);
 
 	return 0;
