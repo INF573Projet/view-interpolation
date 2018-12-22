@@ -17,6 +17,8 @@
 #include <iostream>
 
 #include "image.h"
+#include "Eigen/src/Core/Matrix.h"
+
 
 struct RectParam{
     //TODO : check the right type for T1 and T2
@@ -36,8 +38,8 @@ public:
     static void disparityMapping(const Image<uchar>& R1, const Image<uchar>& R2, Image<short>& disparity);
     static void interpolate(double i, const Image<uchar>& R1, const Image<uchar>& R2, const Image<short>& disparity, Image<uchar>& IR, RectParam& D);
     static void derectify(const Image<uchar>& IR, const RectParam &D, Image<uchar>& I);
-};
 
+};
 
 inline bool distance_for_matches(DMatch d_i, DMatch d_j) {
     return d_i.distance < d_j.distance;
