@@ -7,13 +7,15 @@
 
 
 #include "image.h"
+#include "Eigen/src/Core/Matrix.h"
+
 
 struct RectParam{
     //TODO : check the right type for T1 and T2
     double theta1;
     double theta2;
-    Point2d T1;
-    Point2d T2;
+    Eigen::Vector2d T1;
+    Eigen::Vector2d T2;
     double s;
     double i;
 
@@ -26,8 +28,8 @@ public:
     static void disparityMapping(const Image<uchar>& R1, const Image<uchar>& R2, Image<short>& disparity);
     static void interpolate(double i, const Image<uchar>& R1, const Image<uchar>& R2, const Image<short>& disparity, Image<uchar>& IR, RectParam& D);
     static void derectify(const Image<uchar>& IR, const RectParam &D, Image<uchar>& I);
-};
 
+};
 
 inline bool distance_for_matches(DMatch d_i, DMatch d_j) {
     return d_i.distance < d_j.distance;

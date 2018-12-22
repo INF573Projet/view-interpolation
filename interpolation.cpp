@@ -202,7 +202,6 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
 
 }
 
-
 void Interpolation::disparityMapping(const Image<uchar>& R1, const Image<uchar>& R2, Image<short>& disparity){
     Ptr<StereoSGBM> sgbm_ = StereoSGBM::create();
     sgbm_->setBlockSize(5);
@@ -241,26 +240,44 @@ void Interpolation::interpolate(double i, const Image<uchar>& R1, const Image<uc
 }
 
 void Interpolation::derectify(const Image<uchar>& IR, const RectParam &D, Image<uchar>& I){
-//    theta_i = (2 - i) * theta1 + (i - 1) * theta2
-//    s_i = (2 - i) * 1. + (i - 1) * s
-//    T_i = (2 - i) * T1 + (i - 1) * T2
-//    H_s_i = np.array([[1, 0],
-//    [0, s_i]])
-//    R_i = np.array([[np.cos(theta_i), -np.sin(theta_i)],
-//    [np.sin(theta_i), np.cos(theta_i)]])
-    double theta_i = (2-D.i)*D.theta1 + (D.i-1)*D.theta2;
-    double s_i = (2-D.i)*1.0 + (D.i-1)*D.s;
-    Point2d T_i = (2-D.i)*D.T1 + (D.i-1)*D.T2;
-
+    /* Compute derectifying rotation, scale and translation matrix */
+    Vector2d T_i = (2-D.i)*D.T1 + (D.i-1)*D.T2;
     MatrixXd H_s_i(2,2);
+    double s_i = (2-D.i)*1.0 + (D.i-1)*D.s;
     H_s_i(0,0) = 1;H_s_i(0,1) = 0;
     H_s_i(1,0) = 0;H_s_i(1,1) = 1. / D.s;
+    Matrix2d rot_i;
+    double theta_i = (2-D.i)*D.theta1 + (D.i-1)*D.theta2;
+    rot_i(0,0) = cos(theta_i); rot_i(0,1) = -sin(theta_i);
+    rot_i(1,0) = sin(theta_i);rot_i(1,1) = cos(theta_i);
 
+    /* Compute derectification transformation */
+    MatrixXd xCoordinates(IR.rows, IR.cols);
+    MatrixXd yCoordinates(IR.rows, IR.cols);
+    for(int x=0; x<IR.rows; x++){
+        for(int y=0; y<IR.cols; y++){
+            Vector2d pixel(x,y);
+            Vector2d newPixel = rot_i*H_s_i*pixel - T_i;
+            xCoordinates(x,y) = newPixel(0);
+            yCoordinates(x,y) = newPixel(1);
+        }
+    }
+    double xMin = xCoordinates.minCoeff();
+    double xMax = xCoordinates.maxCoeff();
+    double yMin = yCoordinates.minCoeff();
+    double yMax = yCoordinates.maxCoeff();
 
+    xCoordinates = (xCoordinates.array() - xMin).matrix();
+    yCoordinates = (yCoordinates.array() - yMin).matrix();
 
-    // TODO : finish construction of matrix and same technique to derectify
-
-
+    int height = int(round(yMax - yMin) + 1);
+    int width = int(round(xMax - xMin) + 1);
+    I = Image<uchar>(width, height);
+    for(int x=0; x<width; x++){
+        for(int y=0; y<height; y++){
+            I(int(round(xCoordinates(x,y))), int(round(yCoordinates(x,y)))) = IR(x,y);
+        }
+    }
 }
 
 int main()
@@ -270,7 +287,6 @@ int main()
     double i = 1.5;
 
     /* Seitz and Dyer view interpolation */
-
     cout << "Reading left and right images..." << endl;
     Image<uchar> I1 = Image<uchar>(imread("../images/perra_7.jpg", CV_LOAD_IMAGE_GRAYSCALE));
 	Image<uchar> I2 = Image<uchar>(imread("../images/perra_8.jpg", CV_LOAD_IMAGE_GRAYSCALE));
