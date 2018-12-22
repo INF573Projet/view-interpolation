@@ -5,6 +5,16 @@
 #ifndef VIEW_INTERPOLATION_INTERPOLATION_H
 #define VIEW_INTERPOLATION_INTERPOLATION_H
 
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/features2d/features2d.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+#include "opencv2/imgproc/imgproc.hpp"
+
+#include "Eigen/Core"
+#include "Eigen/SVD"
+#include "Eigen/Dense"
+#include <math.h>
+#include <iostream>
 
 #include "image.h"
 #include "Eigen/src/Core/Matrix.h"

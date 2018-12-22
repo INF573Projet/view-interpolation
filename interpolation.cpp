@@ -1,14 +1,3 @@
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/features2d/features2d.hpp>
-#include <opencv2/calib3d/calib3d.hpp>
-#include "opencv2/imgproc/imgproc.hpp"
-
-#include "Eigen/Core"
-#include "Eigen/SVD"
-#include "Eigen/Dense"
-#include <math.h>
-#include <iostream>
-
 #include "image.h"
 #include "interpolation.h"
 
@@ -104,11 +93,15 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
         x_meanR += i.x;
         y_meanR += i.y;
     }
+    x_meanL /= kptsL.size();
+    y_meanL /= kptsL.size();
+    x_meanR /= kptsR.size();
+    y_meanR /= kptsR.size();
 
     // measurement matrix
     MatrixXd M(4, kptsL.size());
     for(int i=0; i<kptsL.size(); i++){
-        M(0, i) = kptsL[i].x - x_meanL;
+        M(0, i) = kptsL[i].x - x_meanL; // apply directly translation
         M(1, i) = kptsL[i].y - y_meanL;
         M(2, i) = kptsR[i].x - x_meanR;
         M(3, i) = kptsR[i].y - y_meanR;
@@ -193,10 +186,66 @@ void Interpolation::rectify(const Image<uchar>&I1, const Image<uchar>& I2, const
     H_s(1,0) = 0;H_s(1,1) = 1. / s;
 
     // TODO: compute translation vectors T_1 and T_2
+    Vector2d T_1(-x_meanL, -y_meanL), T_2(-x_meanR, -y_meanR);
 
     // TODO: rectify two images based on above geometry matrix
+    //    rows1, cols1 = img1.shape
+    //    map1 = np.zeros((rows1, cols1, 2))
+    //    for h in range(rows1):
+    //        for w in range(cols1):
+    //            map1[h, w] = np.dot(R1, np.array([w, h]) + T1)
+    int rows1 = I1.rows, cols1 = I1.cols;
+    MatrixXd map1_0(rows1, cols1), map1_1(rows1, cols1);
+    Vector2d pos(0,0);
+    for(int x = 0; x<cols1; x++){
+        for(int y=0; y<rows1; y++){
+            pos(0) = x; pos(1) = y;
+            pos = pos + T_1;
+            pos = R1 * pos;
+            map1_0(y, x) = pos(0);
+            map1_1(y, x) = pos(1);
+        }
+    }
+    double w_min1 = map1_0.minCoeff(), w_max1 = map1_0.maxCoeff();
+    double h_min1 = map1_1.minCoeff(), h_max1 = map1_1.maxCoeff();
+
+    Vector2d w_min(w_min1, w_min1), h_min(h_min1, h_min1);
+    map1_0.colwise() -=  w_min; map1_1.colwise() -=  h_min;
+    int rectified_h1 = int(h_max1 - h_min1 + 1), rectified_w1 = int(w_max1 - w_min1 + 1);
+
+    for(int x = 0; x<rectified_w1; x++){
+        for(int y=0; y<rectified_h1; y++){
+            R1(int(map1_0(y, x)), int(map1_1(y, x))) = I1(x, y);
+        }
+    }
+
+    int rows2 = I2.rows, cols2 = I2.cols;
+    MatrixXd map2_0(rows2, cols2), map2_1(rows2, cols2);
+    for(int x = 0; x<cols2; x++){
+        for(int y=0; y<rows2; y++){
+            pos(0) = x; pos(1) = y;
+            pos = pos + T_2;
+            pos = R2 * pos;
+            map2_0(y, x) = pos(0);
+            map2_1(y, x) = pos(1);
+        }
+    }
+
+    map2_0.colwise() -=  w_min; map2_1.colwise() -=  h_min;
+    int vx, vy;
+    for(int x = 0; x<rectified_w1; x++){
+        for(int y=0; y<rectified_h1; y++){
+            vx = int(map2_0(y, x)); vy = int(map1_1(y, x));
+            if(vx>=0 && vy>=0 && vx<rectified_w1 && vy<rectified_h1){
+                R2(vx, vy) = I2(x, y);
+            }
+
+        }
+    }
 
     // TODO: save the parameters for derectification
+    D.theta1 = theta1; D.theta2 = theta2;
+    D.T1 = T_1; D.T2 = T_2; D.s = s;
 
 
 
